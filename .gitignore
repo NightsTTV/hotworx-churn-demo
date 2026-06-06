@@ -1,6 +1,4 @@
-# Synthetic Data outputs
-data/
-*.parquet
+# Model artifacts — can leak training data, never commit
 *.joblib
 *.pkl
 
