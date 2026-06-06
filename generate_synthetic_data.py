@@ -138,13 +138,14 @@ def generate_members_and_ground_truth(studios_df):
             churned = True
             # Sudden dropper triggers billing failure, then cancels 14 days later
             # Must fail billing at least 15 days before END_DATE
-            if max_tenure_days > 30:
+            if max_tenure_days > 34:
                 billing_fail_days = np.random.randint(20, max_tenure_days - 14)
                 failed_billing_date = join_date + datetime.timedelta(days=billing_fail_days)
                 churn_date = failed_billing_date + datetime.timedelta(days=14)
             else:
                 churn_date = END_DATE - datetime.timedelta(days=1)
             churn_risk = "critical"
+
 
         # Generate fake names securely
         name = fake.name()
