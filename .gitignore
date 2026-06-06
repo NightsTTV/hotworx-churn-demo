@@ -1,0 +1,18 @@
+# Synthetic Data outputs
+data/
+*.parquet
+*.joblib
+*.pkl
+
+# Dashboard auth — never commit credentials
+dashboard_users.json
+
+# Python environments and cache
+__pycache__/
+*.pyc
+.venv/
+venv/
+.ipynb_checkpoints/
+.agent/
+.agents/
+

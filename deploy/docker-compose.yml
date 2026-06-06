@@ -1,0 +1,42 @@
+version: '3.8'
+
+services:
+  dashboard:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    container_name: hotworx-churn-dashboard
+    restart: always
+    ports:
+      - "8501:8501"
+    environment:
+      - HOTWORX_DATA_SOURCE=demo
+      - HOTWORX_IDENTITY_ENCRYPTION_KEY=${HOTWORX_IDENTITY_ENCRYPTION_KEY:-kjBeSXQgvgrZA3O0OJPgJGndaq1PCo8uMWOfPzwy9fA=}
+      - HOTWORX_IDENTITY_SALT=${HOTWORX_IDENTITY_SALT:-pepper_salt_2026}
+      - INTERVENTIONS_LIVE=false
+    volumes:
+      - shared-data:/app/data
+
+  scheduler:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    container_name: hotworx-churn-scheduler
+    restart: always
+    environment:
+      - HOTWORX_DATA_SOURCE=demo
+      - HOTWORX_IDENTITY_ENCRYPTION_KEY=${HOTWORX_IDENTITY_ENCRYPTION_KEY:-kjBeSXQgvgrZA3O0OJPgJGndaq1PCo8uMWOfPzwy9fA=}
+      - HOTWORX_IDENTITY_SALT=${HOTWORX_IDENTITY_SALT:-pepper_salt_2026}
+      - INTERVENTIONS_LIVE=false
+    volumes:
+      - shared-data:/app/data
+    entrypoint: >
+      sh -c "echo '0 2 * * * cd /app && /opt/venv/bin/python run_pipeline.py && /opt/venv/bin/python score_members.py && /opt/venv/bin/python interventions.py >> /var/log/cron.log 2>&1' > /etc/cron.d/pipeline-cron
+      && chmod 0644 /etc/cron.d/pipeline-cron
+      && crontab /etc/cron.d/pipeline-cron
+      && touch /var/log/cron.log
+      && echo 'Scheduler cron job configured (runs daily at 2:00 AM). Starting cron...'
+      && cron -f"
+
+volumes:
+  shared-data:
