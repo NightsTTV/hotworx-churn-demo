@@ -123,11 +123,38 @@ FEATURES_PATH = os.path.join(DATA_DIR, "fct_member_features_daily.parquet")
 SCORES_PATH = os.path.join(DATA_DIR, "churn_scores_daily.parquet")
 GROUND_TRUTH_PATH = os.path.join(DATA_DIR, "ground_truth.parquet")
 
+# --- Auto-initialize sandbox data if missing on Streamlit Cloud ---
+if os.getenv("HOTWORX_DATA_SOURCE", "demo").lower() == "demo":
+    required_files = [IDENTITY_PATH, FEATURES_PATH, SCORES_PATH]
+    if not all(os.path.exists(f) for f in required_files):
+        st.warning("🔄 Sandbox demo data files not found. Automatically preparing synthetic database. This will take ~10 seconds...")
+        try:
+            import generate_synthetic_data
+            import run_pipeline
+            import score_members
+            import interventions
+            
+            with st.spinner("Generating 5,000 synthetic members and histories..."):
+                generate_synthetic_data.main()
+            with st.spinner("Building 18-month rolling daily feature marts..."):
+                run_pipeline.main()
+            with st.spinner("Scoring active members via trained model..."):
+                score_members.score_members()
+            with st.spinner("Routing interventions and queues..."):
+                interventions.run_intervention_router()
+                
+            st.success("✓ Demo data generated successfully! Reloading...")
+            st.rerun()
+        except Exception as e:
+            st.error(f"Failed to auto-initialize demo data: {str(e)}")
+            st.stop()
+
 # Dashboard accounts are loaded WITHOUT plaintext passwords in source (see auth.py):
 #   - dashboard_users.json (gitignored) or DASHBOARD_USERS_JSON env, if present (hashed records)
 #   - else a demo fallback: hashed in-memory from DASHBOARD_ADMIN_PW / DASHBOARD_GM_PW (demo defaults)
 from auth import load_user_accounts, verify_password
 USER_ACCOUNTS = load_user_accounts()
+
 
 # ==============================================================================
 # AUTHENTICATION LAYER
