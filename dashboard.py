@@ -73,6 +73,10 @@ st.markdown("""
         border: 1px solid #D1D5DB !important;
         border-radius: 8px !important;
     }
+    input {
+        color: #1F2937 !important;
+        -webkit-text-fill-color: #1F2937 !important;
+    }
     div[data-baseweb="select"] * {
         color: #1F2937 !important;
     }
