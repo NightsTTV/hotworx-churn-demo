@@ -606,7 +606,7 @@ if view_selection == "My Studio Today":
             }
         ))
         fig_health.update_layout(
-            paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
+            paper_bgcolor='#FFFFFF', plot_bgcolor='#FFFFFF',
             font={'color': '#1F2937'}, height=180, margin=dict(l=20, r=20, t=10, b=10)
         )
         st.plotly_chart(fig_health, use_container_width=True, theme=None)
@@ -824,7 +824,7 @@ if view_selection == "My Studio Today":
                 )
                 fig_channel.update_traces(texttemplate="%{text:.1f}%", textposition="outside")
                 fig_channel.update_layout(
-                    paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
+                    paper_bgcolor='#FFFFFF', plot_bgcolor='#FFFFFF',
                     font_color='#1F2937', showlegend=False, coloraxis_showscale=False,
                     yaxis_range=[0, 110],
                     margin=dict(t=20)
@@ -849,7 +849,7 @@ if view_selection == "My Studio Today":
                     color="outcome", color_discrete_map=color_map, hole=0.4,
                 )
                 fig_outcomes.update_layout(
-                    paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
+                    paper_bgcolor='#FFFFFF', plot_bgcolor='#FFFFFF',
                     font_color='#1F2937',
                     margin=dict(t=20)
                 )
@@ -961,8 +961,8 @@ elif view_selection == "Studio Overview":
             hole=0.4
         )
         fig_pie.update_layout(
-            paper_bgcolor='rgba(0,0,0,0)',
-            plot_bgcolor='rgba(0,0,0,0)',
+            paper_bgcolor='#FFFFFF',
+            plot_bgcolor='#FFFFFF',
             font_color='#1F2937',
             legend_title_text='Risk Tier',
             margin=dict(t=20)
@@ -980,8 +980,8 @@ elif view_selection == "Studio Overview":
             color_discrete_sequence=['#5F57FF']
         )
         fig_hist.update_layout(
-            paper_bgcolor='rgba(0,0,0,0)',
-            plot_bgcolor='rgba(0,0,0,0)',
+            paper_bgcolor='#FFFFFF',
+            plot_bgcolor='#FFFFFF',
             font_color='#1F2937',
             xaxis_tickformat='.0%',
             margin=dict(t=20)
@@ -1066,7 +1066,7 @@ elif view_selection == "Studio Overview":
                     align="center"
                 )
                 
-                fig_q.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+                fig_q.update_layout(paper_bgcolor="#FFFFFF", plot_bgcolor="#FFFFFF",
                                     font_color="#1F2937", legend_title_text="Segment",
                                     margin=dict(t=20))
                 fig_q.update_xaxes(range=[-5, 105], gridcolor='rgba(0,0,0,0.05)', zerolinecolor='rgba(0,0,0,0.1)')
@@ -1176,8 +1176,8 @@ elif view_selection == "Member Detail":
         ))
         
         fig_gauge.update_layout(
-            paper_bgcolor='rgba(0,0,0,0)',
-            plot_bgcolor='rgba(0,0,0,0)',
+            paper_bgcolor='#FFFFFF',
+            plot_bgcolor='#FFFFFF',
             font={'color': '#1F2937'},
             height=160,
             margin=dict(l=20, r=20, t=10, b=10)
@@ -1210,7 +1210,7 @@ elif view_selection == "Member Detail":
                         ],
                     }
                 ))
-                fig_eng.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
+                fig_eng.update_layout(paper_bgcolor='#FFFFFF', plot_bgcolor='#FFFFFF',
                                       font={'color': '#1F2937'}, height=160, margin=dict(l=20, r=20, t=10, b=10))
                 st.plotly_chart(fig_eng, use_container_width=True, theme=None)
 
@@ -1270,8 +1270,8 @@ elif view_selection == "Member Detail":
                 color_discrete_sequence=['#5F57FF', '#10B981', '#FF9F1C']
             )
             fig_trend.update_layout(
-                paper_bgcolor='rgba(0,0,0,0)',
-                plot_bgcolor='rgba(0,0,0,0)',
+                paper_bgcolor='#FFFFFF',
+                plot_bgcolor='#FFFFFF',
                 font_color='#1F2937',
                 legend_title_text='Metric',
                 margin=dict(t=20)
@@ -1348,7 +1348,7 @@ elif view_selection == "Revenue Impact":
         fig_ret = px.line(ret, x="month", y="retention",
                           labels={"month": "Months since join", "retention": "Retention"},
                           color_discrete_sequence=["#5F57FF"])
-        fig_ret.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+        fig_ret.update_layout(paper_bgcolor="#FFFFFF", plot_bgcolor="#FFFFFF",
                               font_color="#1F2937", yaxis_tickformat=".0%")
         fig_ret.update_xaxes(gridcolor='rgba(0,0,0,0.05)', zerolinecolor='rgba(0,0,0,0.1)')
         fig_ret.update_yaxes(gridcolor='rgba(0,0,0,0.05)', zerolinecolor='rgba(0,0,0,0.1)')
@@ -1444,7 +1444,7 @@ elif view_selection == "Model Health":
                                        line=dict(dash="dash", color="#8A8F98"), name="Perfect"))
             fig_c.add_trace(go.Scatter(x=calib["avg_predicted"], y=calib["actual_rate"],
                                        mode="markers", marker=dict(size=11, color="#5F57FF"), name="Deciles"))
-            fig_c.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+            fig_c.update_layout(paper_bgcolor="#FFFFFF", plot_bgcolor="#FFFFFF",
                                 font_color="#1F2937", xaxis_title="Predicted", yaxis_title="Actual")
             fig_c.update_xaxes(gridcolor='rgba(0,0,0,0.05)', zerolinecolor='rgba(0,0,0,0.1)')
             fig_c.update_yaxes(gridcolor='rgba(0,0,0,0.05)', zerolinecolor='rgba(0,0,0,0.1)')
@@ -1458,7 +1458,7 @@ elif view_selection == "Model Health":
             fig_d = px.bar(drift, x="psi", y="feature", orientation="h", color="severity",
                            color_discrete_map={"Stable": "#10B981", "Moderate": "#FBBF24", "Significant": "#EF4444"})
             fig_d.add_vline(x=mm.PSI_RETRAIN, line_dash="dash", line_color="#EF4444")
-            fig_d.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+            fig_d.update_layout(paper_bgcolor="#FFFFFF", plot_bgcolor="#FFFFFF",
                                 font_color="#1F2937", yaxis={"categoryorder": "total ascending"})
             fig_d.update_xaxes(gridcolor='rgba(0,0,0,0.05)', zerolinecolor='rgba(0,0,0,0.1)')
             fig_d.update_yaxes(gridcolor='rgba(0,0,0,0.05)', zerolinecolor='rgba(0,0,0,0.1)')
@@ -1530,7 +1530,7 @@ elif view_selection == "Win-Back Leaderboard":
             color="reactivation_rate", color_continuous_scale="Purples",
             labels={"reactivation_rate": "Reactivation rate", "home_studio_id": "Studio"},
         )
-        fig_lb.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+        fig_lb.update_layout(paper_bgcolor="#FFFFFF", plot_bgcolor="#FFFFFF",
                              font_color="#1F2937", yaxis={"categoryorder": "total ascending"},
                              coloraxis_showscale=False, xaxis_tickformat=".0%",
                              margin=dict(t=20))
@@ -1727,8 +1727,8 @@ else:
             st.markdown(f'<div style="font-family:\'Oswald\', sans-serif; font-size:16px; font-weight:bold; text-transform:uppercase; color:#1F2937; margin-bottom:10px;">{chart_title} {info("A visual comparison of the churn rates between the treatment group and the control group.")}</div>', unsafe_allow_html=True)
             fig_ab.update_layout(
                 yaxis_title="Churn Rate (%)",
-                paper_bgcolor='rgba(0,0,0,0)',
-                plot_bgcolor='rgba(0,0,0,0)',
+                paper_bgcolor='#FFFFFF',
+                plot_bgcolor='#FFFFFF',
                 font_color='#1F2937',
                 margin=dict(t=20)
             )
