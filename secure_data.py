@@ -7,18 +7,34 @@ from cryptography.fernet import Fernet
 DEV_FALLBACK_KEY = "kjBeSXQgvgrZA3O0OJPgJGndaq1PCo8uMWOfPzwy9fA=" # stable dev key
 DEV_FALLBACK_SALT = "hotworx_default_dev_salt_2026"
 
+def _is_production() -> bool:
+    return os.getenv("HOTWORX_ENV", "dev").lower() in ("prod", "production")
+
 def get_encryption_key() -> bytes:
     key_str = os.getenv("HOTWORX_IDENTITY_ENCRYPTION_KEY")
-    if not key_str:
-        print("⚠️ WARNING: Using fallback development encryption key. Do not run in production!")
-        key_str = DEV_FALLBACK_KEY
-    return key_str.encode()
+    if key_str:
+        return key_str.encode()
+    # No real key configured. Fail CLOSED in production rather than silently using the
+    # committed dev key; still allow the dev/demo default locally (with a loud warning).
+    if _is_production():
+        raise RuntimeError(
+            "HOTWORX_IDENTITY_ENCRYPTION_KEY is required when HOTWORX_ENV=production. "
+            "Refusing to fall back to the committed dev key."
+        )
+    print("⚠️ WARNING: Using committed DEV encryption key (dev/demo only). "
+          "Set HOTWORX_IDENTITY_ENCRYPTION_KEY for real data.")
+    return DEV_FALLBACK_KEY.encode()
 
 def get_hashing_salt() -> str:
     salt = os.getenv("HOTWORX_IDENTITY_SALT")
-    if not salt:
-        salt = DEV_FALLBACK_SALT
-    return salt
+    if salt:
+        return salt
+    if _is_production():
+        raise RuntimeError(
+            "HOTWORX_IDENTITY_SALT is required when HOTWORX_ENV=production. "
+            "Refusing to fall back to the committed dev salt."
+        )
+    return DEV_FALLBACK_SALT
 
 def encrypt_dataframe(df: pd.DataFrame) -> bytes:
     key = get_encryption_key()

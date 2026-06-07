@@ -5,6 +5,11 @@
 # Dashboard auth — never commit credentials
 dashboard_users.json
 
+# Synthetic data & generated artifacts — regenerable, and the encrypted identity blob must
+# NEVER be committed (especially alongside the dev encryption key in secure_data.py)
+data/
+*.parquet
+
 # Python environments and cache
 __pycache__/
 *.pyc

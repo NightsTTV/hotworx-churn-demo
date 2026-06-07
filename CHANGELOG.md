@@ -127,6 +127,123 @@ Took on the highest-value deferred items from the Phase 4 review.
   (the `int_member_identity` TODOs).
 - Queue/audit retention/compaction + a dedicated `run_id` column for run-level grouping (IDs embed it for now).
 
+## CRM Tracker — Phase 3: Revenue Impact Attribution
+
+New `revenue_metrics.py` + an Admin "Revenue Impact" dashboard view.
+
+- **Model-based attribution (honest):** because interventions are dispatched as of the latest data
+  date, there's no *forward* window for `re_engaged`/`payment_resolved` to fire — so "saved" is an
+  expected-value estimate, not a naive outcome count. `Saved MRR = Σ(churn_probability × tier_price)
+  × effectiveness`, segmented (retention 25% vs. win-back reactivation 8% — the only two assumptions;
+  everything else data-driven). `confirmed_reengaged` is tracked separately for when real forward data
+  accrues. Headline `MRR At Risk` ($38,870/mo) is assumption-free.
+- **Metrics:** MRR-at-risk, Saved/Lost MRR, net monthly impact, LTV impact (× 9-mo observed lifetime),
+  per-channel ROI (Email $0.01 / SMS $0.05 / Call $5.00), and **Kaplan-Meier cohort retention** (proper
+  right-censoring; 78.2% @ 12 mo). Outputs `data/revenue_studio_leaderboard.parquet` + `revenue_cohort_retention.parquet`.
+- **Dashboard:** Admin-only "Revenue Impact" view — KPI cards, retention curve, channel-ROI table,
+  studio leaderboard (gradient), and a **franchise PDF export** (matplotlib PdfPages — no new dependency).
+- Verified: `revenue_metrics.py` runs (ROI 470×, est. ~51 members saved/mo), all dashboard data
+  functions return expected shapes, PDF renders (~45 KB), everything compiles.
+
+## CRM Tracker — Phase 4: Model Monitoring & Drift Detection
+
+New `train_model.py` (rolling-window retrain core) + `model_monitor.py` + an Admin "Model Health" dashboard view.
+
+- **TOP PRIORITY — rolling TIME window, not all history.** `train_model.py` always trains on
+  `date_day >= as_of - ROLLING_TRAIN_WINDOW_MONTHS` (default **24 mo**); older data is deliberately
+  discarded (range of *time* > range of *data*). Verified: trained on 2024-05-31→2026-05-17, **dropped
+  100,680 older rows**, val AUC 0.98 / PR-AUC 0.79. Excludes the last 14 days (immature labels),
+  chronological train/calibrate split, XGBoost + isotonic calibration — same recipe as the notebook,
+  now programmatic and automatable.
+- **Versioning + registry:** saves live `churn_model_pipeline.joblib` **and** a timestamped
+  `churn_model_pipeline_{version}.joblib`; appends `models/model_registry.parquet` (window dates,
+  rows, trigger, val AUC/PR-AUC).
+- **`model_monitor.py`:**
+  - *Calibration check* — predicted vs. actual churn by decile; alert if any decile |dev| > 15%
+    (live: max 0.1% — well-calibrated).
+  - *Drift detection* — PSI per key feature (training window vs. recent 30 days); >0.1 moderate,
+    >0.2 significant. **Verified it fires:** `--simulate-drift` perturbs the recent window →
+    PSI 13.1 / 10.8 / 10.0 → "RETRAIN RECOMMENDED."
+  - *Auto-retrain* — `--auto-retrain` triggers `train_model.train_and_save(trigger="auto-drift")`
+    when breached (verified: produced a new registry version). Also `--retrain` to force.
+  - Writes `model_health_calibration.parquet`, `model_health_drift.parquet`, `model_monitor_log.parquet`.
+- **Dashboard "Model Health" view (Admin):** live-model card (version + rolling window + val metrics +
+  old-rows-dropped), calibration scatter, PSI drift bar (with retrain threshold line), retraining
+  history, and monitoring log — plus "Run monitoring check" and "Force retrain" buttons.
+
+## CRM Tracker — Phase 5: Engagement Scoring & Upsell Engine
+
+New `engagement_scorer.py`, an upsell engine in `interventions.py`, and engagement visuals in `dashboard.py`.
+
+- **Composite 0–100 score** (`engagement_scorer.py`): session utilization 35% · app usage 25% ·
+  email response 15% · retail spend 15% · consistency 10%. Verified scores span **0.0–100.0**
+  (mean 70.6), joined with churn probability for the dual gauge → `data/member_engagement.parquet`.
+- **Segments** (most-actionable label, with precedence): `upsell_candidate` (Basic + high),
+  `under_engaged_payer` (Premium + low), `at_risk_silent`, `champion`, `engaged`. Tier-mismatch
+  checks pass: 1,282 upsell_candidates **all Basic**, 15 under_engaged_payers **all Premium**
+  ($75.6k/mo Basic upsell pipeline).
+- **Upsell engine** (`interventions.py::run_upsell_engine`, `--upsell` flag): segment→campaign
+  (UpsellEmail / WinValueEmail / EngageNudge / ReferralEmail), reusing the churn router's safety
+  rails — dry-run default, deterministic 10% holdout, 7-day rate limit, global kill switch, full
+  audit+queue. Verified dry-run: **1,987 dispatched**, 236 held out, 128 rate-limited, 0 failed.
+- **Dashboard:** Member Detail now shows **dual gauges** (Churn Risk + Engagement) side by side;
+  Studio Overview gains an **Engagement-vs-Churn quadrant map** (colored by segment) + segment
+  summary, GM-scoped to their studio.
+- Verified: all modules compile; engagement panel data shaped correctly.
+
+## Security carry-overs — CLOSED
+
+The two items flagged in the Phase 5 review are now fixed (verified):
+- **`.gitignore`** re-excludes `data/` + `*.parquet`, so the encrypted identity blob can't be
+  committed (esp. alongside the dev key). Confirmed `git check-ignore` now matches; 0 data files
+  were ever tracked, so no untracking was needed. (Does NOT affect local files — restarts don't
+  regenerate; only a fresh clone needs the one-time pipeline bootstrap.)
+- **`secure_data.py` key/salt fail CLOSED in production:** with `HOTWORX_ENV=production` and no
+  `HOTWORX_IDENTITY_ENCRYPTION_KEY`/`HOTWORX_IDENTITY_SALT` it raises rather than using the committed
+  dev fallback. Local/demo (default `HOTWORX_ENV=dev`) still works with a loud warning — verified
+  decrypt of 5,000 rows still succeeds.
+
+## Admin "View as Studio" oversight lens
+
+Added an Admin-only sidebar selector to view the exact GM-scoped experience for any single studio.
+
+- **Not privilege escalation:** admins already see all data, so this is a *lens*, not new access.
+  Implemented by threading `effective_studio` / `studio_scoped` (GM's own studio, or the admin's
+  selection) through `get_scoped_connection` and every per-view filter (My Studio Today, Studio
+  Overview + engagement map, Member Detail, Queue, A/B). "All studios" = the prior global admin view.
+- **Read-only:** when an admin is in the lens (`oversight_readonly`), GM write-actions (Save Outcome,
+  Mark Call as Completed) are disabled with a notice — no actions are taken as the GM.
+- **Audited:** each (admin, studio) view is logged to `data/admin_oversight_log.parquet` (once per
+  change, not per rerun).
+- The cross-studio "Home Studio Risk Breakdown" hides while scoped to one studio; Revenue Impact and
+  Model Health remain global org tools.
+- Verified: compiles; scoping isolates correctly (admin→S03 sees 1 studio / 492 members / 372 scores
+  of 3,740); GM behavior unchanged.
+
+## GM Daily Welcome + Task List, and Win-Back Leaderboard with Bonus
+
+Two GM-facing features.
+
+### 1. Personalized daily digest with a named task list (`daily_digest.py`)
+- Added a time-aware greeting ("Good morning, GM of S05! Here's your game plan for Sunday.") and a
+  **🥇 win-back rank line** (rank, reactivation %, bonus pace) for motivation.
+- Added a concrete **"Your Tasks Today"** section listing the actual people to follow up — top
+  Critical/High members to call (with risk %), top win-back outreach targets (with MRR), and
+  onboarding welcome check-ins — resolved from the (decrypted) identity table.
+
+### 2. Win-Back Retention Leaderboard + year-end bonus (`winback_leaderboard.py` + dashboard)
+- Ranks studios by **reactivation rate** (success at retaining originally-cancelled members).
+- The base data had **no reactivation signal** (no re-joiner cohort — the deferred Phase-1 gap), so
+  the module generates a clearly-marked **synthetic** reactivation cohort with per-studio success
+  rates (8–22%) → `data/winback_reactivations.parquet`. Production would swap in observed
+  cancelled→active transitions; the math is unchanged.
+- **Year-end bonus pool** = 10% of recovered annual revenue, allocated proportionally to revenue
+  each studio recovered (Σ awards = pool, verified). Champion: S05 (23.7%); pool $5,295.60.
+- **Dashboard:** Admin "Win-Back Leaderboard" view (champion/pool KPIs, rate bar chart, ranked
+  table with 🥇🥈🥉, bonus-allocation table) + a win-back **rank badge** on each GM's "My Studio Today"
+  (also shown when an admin views a studio via the oversight lens).
+- Honest labeling: rank = skill (rate); bonus = dollars recovered; reactivations = synthetic demo data.
+
 ## 7. Still open / future work
 - `precision@10%` reads ~14% structurally (positives < 2% of rows ≪ the 10% bucket). **Retire it from the headline; quote PR-AUC.**
 - `avg_sauna_temp_30d` still uses `0.0` when no attended sessions — acceptable because real temps are 120–130°F so `0.0` is an unambiguous sentinel (unlike rates).
