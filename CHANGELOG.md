@@ -244,6 +244,54 @@ Two GM-facing features.
   (also shown when an admin views a studio via the oversight lens).
 - Honest labeling: rank = skill (rate); bonus = dollars recovered; reactivations = synthetic demo data.
 
+## Generative AI Member Summaries (`ai_summary_engine.py` + Member Detail UI)
+
+Hybrid GenAI feature: deterministic data layer + self-hosted Llama synthesis + tabbed GM UI.
+
+- **Phase 1 — deterministic payload** (`build_member_payload`): exact metrics + recent coach chats,
+  de-identified (no name/email/phone — injected at render time only), resolved via the encrypted
+  identity table; DuckDB pushdown reads only the member's rows.
+- **Phase 2 — LLM synthesis** (`synthesize_summary`): Ollama OpenAI-compatible endpoint
+  (`llama3.1:8b-instruct-q8_0`, env-configurable), temp 0.2, strict JSON contract, prompt-injection
+  guard on chat text, degradation chain **encrypted cache → LLM (validated) → rules fallback** (never
+  raises). Anti-hallucination validator rejects multi-digit numbers absent from the payload —
+  *fired live on first run*, caught "97.3%" which was a CORRECT percent form of 0.973, so the
+  validator whitelists percent conversions of probability fields. Verified: live LLM output passes,
+  cache hit, cache encrypted at rest (plain read fails), offline → rules fallback, cache gitignored.
+- **Phase 3 — UI** (ui-ux-pro-max skill): Member Detail "Risk Explanation" replaced with tabs —
+  **✨ AI Summary & Action Plan** (provenance badge LLM/Cached/Rules as color+dot+text, summary,
+  numbered next steps, talking-point quotes, Regenerate) and **📊 Technical Breakdown** (the
+  deterministic bullets). On-demand generation (never auto-calls the LLM on click; cached briefs
+  render instantly); oversight lens is read-only (no generate/regenerate). Matches the current
+  light theme. Verified via Streamlit AppTest: GM login renders cached badge + steps + quotes +
+  Regenerate; admin oversight shows read-only notice and no buttons; no exceptions.
+- **Phase 4 — offline test suite** (`test_ai_summary.py`, 11/11 passing, no Ollama needed; LLM
+  mocked, cache redirected to temp): the three plan profiles (high-risk failed-billing+cancel-query,
+  low-risk engaged, lapsed with no chats), anti-hallucination (invented numbers rejected; payload
+  numbers + percent-forms of probabilities allowed), full degradation chain (good→llm, repeat→cache,
+  hallucinated→rules, unparseable→rules, server-down→rules), prompt guards present, and real-payload
+  PII check (no name/email/phone fields). Runs standalone or under pytest.
+
+## Security — Auth audit log + lockout (SOC finding #1)
+
+Closed the biggest detection blind spot: the login was previously unlogged and unthrottled.
+
+- **`auth_audit.py`** (Streamlit-free, testable): every attempt (success/failure/lockout) appended
+  to a **hash-chained JSONL** log `data/auth_audit.log` — each record carries the prior record's
+  sha256, so deletion/edits are detectable via `verify_chain()` (tamper-evidence vs. T1070.004/T1565).
+  Flat JSON for SIEM ingestion; password never logged.
+- **Lockout** throttles brute force / spraying (T1110): ≥5 failures / 15 min (per username, and per
+  source IP when known) → 15-min backoff, checked *before* password verification. Source-based
+  lockout no-ops when source is `unknown` (proxy-less) to avoid an all-user DoS.
+- **`dashboard.py`** login wired to log + lockout; best-effort source from `X-Forwarded-For` /
+  `X-Real-Ip`. `auth_audit.py main()` is a SOC utility: chain integrity + last-hour failure summary
+  by username/source (spray indicator).
+- Verified: lockout fires at threshold, no collateral lock across users on `unknown` source, success
+  resets the window, chain detects a tampered middle record (break at exact line); AppTest confirms
+  real login logs `failure`→`success` with intact chain; log is gitignored.
+- Production follow-ups (from the threat model): ship the log off-box, add MFA/SSO + session timeout,
+  alert on kill-switch trips and `INTERVENTIONS_LIVE` flips.
+
 ## 7. Still open / future work
 - `precision@10%` reads ~14% structurally (positives < 2% of rows ≪ the 10% bucket). **Retire it from the headline; quote PR-AUC.**
 - `avg_sauna_temp_30d` still uses `0.0` when no attended sessions — acceptable because real temps are 120–130°F so `0.0` is an unambiguous sentinel (unlike rates).

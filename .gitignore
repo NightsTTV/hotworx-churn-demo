@@ -10,6 +10,11 @@ dashboard_users.json
 data/
 *.parquet
 
+# Generated reports (franchise PDF is produced on demand)
+reports_franchise_revenue.pdf
+franchise_revenue_report.pdf
+*.pdf
+
 # Python environments and cache
 __pycache__/
 *.pyc

@@ -213,6 +213,48 @@ st.markdown("""
         text-transform: uppercase;
         letter-spacing: 0.8px;
     }
+    /* AI summary provenance badges — color + dot + TEXT (never color alone) */
+    .ai-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 3px 12px;
+        border-radius: 20px;
+        font-size: 11px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.8px;
+        transition: opacity 0.2s ease-out;
+    }
+    .ai-badge .dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
+    .ai-badge-llm   { background: rgba(242, 116, 53, 0.12); color: #C2410C; }
+    .ai-badge-llm .dot   { background: #F27435; }
+    .ai-badge-cache { background: rgba(100, 116, 139, 0.12); color: #475569; }
+    .ai-badge-cache .dot { background: #64748B; }
+    .ai-badge-rules { background: rgba(37, 99, 235, 0.10); color: #1D4ED8; }
+    .ai-badge-rules .dot { background: #2563EB; }
+
+    /* AI brief content blocks */
+    .ai-summary-text { font-size: 15px; line-height: 1.65; color: #1F2937; margin: 10px 0 4px 0; }
+    .ai-step {
+        display: flex; gap: 10px; align-items: flex-start;
+        padding: 9px 12px; margin: 6px 0;
+        background: #F9FAFB; border: 1px solid #E5E7EB; border-radius: 8px;
+        font-size: 14px; line-height: 1.5; color: #1F2937;
+        transition: border-color 0.2s ease-out;
+    }
+    .ai-step:hover { border-color: rgba(242, 116, 53, 0.45); }
+    .ai-step .n {
+        flex: none; width: 22px; height: 22px; border-radius: 50%;
+        background: rgba(242, 116, 53, 0.12); color: #C2410C;
+        font-size: 12px; font-weight: 700; display: flex; align-items: center; justify-content: center;
+    }
+    .ai-quote {
+        border-left: 3px solid #F27435; background: rgba(242, 116, 53, 0.05);
+        padding: 8px 14px; margin: 6px 0; border-radius: 0 8px 8px 0;
+        font-size: 14px; font-style: italic; color: #374151; line-height: 1.5;
+    }
+
     .badge-critical { background: rgba(239, 68, 68, 0.1) !important; color: #EF4444 !important; }
     .badge-high { background: rgba(249, 115, 22, 0.1) !important; color: #F97316 !important; }
     .badge-medium { background: rgba(251, 191, 36, 0.1) !important; color: #D97706 !important; }
@@ -329,7 +371,21 @@ def h_info(title: str, text: str, level: str = "###"):
 #   - dashboard_users.json (gitignored) or DASHBOARD_USERS_JSON env, if present (hashed records)
 #   - else a demo fallback: hashed in-memory from DASHBOARD_ADMIN_PW / DASHBOARD_GM_PW (demo defaults)
 from auth import load_user_accounts, verify_password
+import auth_audit
 USER_ACCOUNTS = load_user_accounts()
+
+
+def _client_source() -> str:
+    """Best-effort source identifier for auth logging/lockout. Reliable only behind a reverse
+    proxy that sets X-Forwarded-For; otherwise 'unknown' (source-based lockout then no-ops)."""
+    try:
+        h = st.context.headers
+        xff = h.get("X-Forwarded-For") or h.get("x-forwarded-for")
+        if xff:
+            return xff.split(",")[0].strip()
+        return h.get("X-Real-Ip") or h.get("x-real-ip") or "unknown"
+    except Exception:
+        return "unknown"
 
 
 # ==============================================================================
@@ -345,17 +401,33 @@ def login():
     st.sidebar.title("🔐 Authentication")
     username = st.sidebar.text_input("Username").strip().lower()
     password = st.sidebar.text_input("Password", type="password")
-    
+
     if st.sidebar.button("Log In"):
+        source = _client_source()
+
+        # Throttle brute force / spraying (T1110) BEFORE checking the password.
+        locked, secs = auth_audit.check_lockout(username, source)
+        if locked:
+            auth_audit.log_auth_event(username, "lockout", source, reason="attempt during active lockout")
+            st.sidebar.error(f"🔒 Too many failed attempts. Try again in {secs // 60}m {secs % 60}s.")
+            return
+
         acct = USER_ACCOUNTS.get(username)
         if acct and verify_password(password, acct["password_hash"]):
+            auth_audit.log_auth_event(username, "success", source)
             st.session_state.authenticated = True
             st.session_state.username = username
             st.session_state.user_role = acct["role"]
             st.session_state.user_studio = acct["studio"]
             st.rerun()
         else:
-            st.sidebar.error("Invalid username or password.")
+            auth_audit.log_auth_event(username, "failure", source, reason="invalid credentials")
+            # Re-check so the threshold-crossing attempt is told it's now locked.
+            locked, secs = auth_audit.check_lockout(username, source)
+            if locked:
+                st.sidebar.error(f"🔒 Too many failed attempts. Locked for ~{secs // 60}m.")
+            else:
+                st.sidebar.error("Invalid username or password.")
 
 def logout():
     st.session_state.authenticated = False
@@ -1215,13 +1287,15 @@ elif view_selection == "Member Detail":
                 st.plotly_chart(fig_eng, use_container_width=True, theme=None)
 
     with m_col2:
-        h_info("Risk Explanation & Diagnostics", "Human-readable reasons explaining the AI's churn risk calculation alongside Churn Risk & Engagement gauges.")
-        
+        import ai_summary_engine as ase
+
+        h_info("Risk Explanation & Diagnostics", "AI-synthesized outreach brief (every number verified against the warehouse) plus the deterministic metric breakdown.")
+
         # Generate explanations (logic from score_members.py)
         # We'll pull the raw feature row for this member on this date to run rules
         raw_feat_query = "SELECT * FROM features WHERE hashed_member_id = ? AND date_day = ?"
         raw_feat_df = run_secure_query(raw_feat_query, (hashed_id, latest_snapshot_date))
-        
+
         explanations = []
         if not raw_feat_df.empty:
             row = raw_feat_df.iloc[0]
@@ -1239,14 +1313,90 @@ elif view_selection == "Member Detail":
                 explanations.append(f"📱 **Low app engagement**: Only {row['app_logins_30d']} app logins in the last month.")
             if row['sessions_booked_30d'] > 0 and row['attendance_rate_30d'] < 0.50:
                 explanations.append(f"🚫 **Sauna no-show pattern**: Booked {row['sessions_booked_30d']} sessions but attended only {row['attendance_rate_30d']:.0%}.")
-                
+
         if not explanations:
             explanations.append("📈 **General engagement decay**: Gradual decrease in email opens, click rates, and weekly app logins.")
-            
-        st.markdown('<div class="card">', unsafe_allow_html=True)
-        for exp in explanations:
-            st.write(exp)
-        st.markdown('</div>', unsafe_allow_html=True)
+
+        tab_ai, tab_tech = st.tabs(["✨ AI Summary & Action Plan", "📊 Technical Breakdown"])
+
+        with tab_ai:
+            payload = ase.build_member_payload(hashed_id)
+            if payload is None:
+                st.info("No feature snapshot available for this member yet.")
+            else:
+                brief_key = f"ai_brief_{hashed_id}"
+                # Session state holds a brief generated THIS session (badge shows its true source);
+                # anything loaded from the encrypted disk cache is labeled "Cached".
+                brief = st.session_state.get(brief_key)
+                if brief is None:
+                    brief = ase._cache_get(payload)
+                    if brief:
+                        brief["source"] = "cache"
+
+                # On-demand generation: never auto-call the LLM on member click (local
+                # model latency); cached briefs render instantly.
+                if brief is None:
+                    st.markdown(
+                        '<div class="card" style="text-align:center;">'
+                        '<div class="ai-summary-text">No AI brief generated for this member yet.</div>'
+                        '<div style="font-size:13px;color:#6B7280;">Synthesizes activity, payments, and '
+                        'coach-chat signals into talking points for your outreach call.</div></div>',
+                        unsafe_allow_html=True,
+                    )
+                    if oversight_readonly:
+                        st.caption("👁 Oversight (read-only) — AI brief generation is disabled while viewing as a studio.")
+                    elif st.button("✨ Generate AI brief", key=f"gen_{hashed_id}"):
+                        with st.spinner("Synthesizing brief with local Llama — first run can take a minute..."):
+                            st.session_state[brief_key] = ase.synthesize_summary(payload)
+                        st.rerun()
+                else:
+                    badge_map = {
+                        "llm": ("ai-badge-llm", f"AI Generated · {brief.get('model') or 'local model'}",
+                                "Freshly synthesized by the self-hosted model; all figures validated against warehouse data."),
+                        "cache": ("ai-badge-cache", f"Cached · {payload['as_of_date']}",
+                                  "Previously generated for this member and data snapshot; stored encrypted."),
+                        "rules": ("ai-badge-rules", "Rules-based fallback",
+                                  "The local AI model was unavailable or its output failed validation, so this brief was assembled deterministically."),
+                    }
+                    cls, label, tip = badge_map.get(brief.get("source", "rules"), badge_map["rules"])
+                    st.markdown(
+                        f'<div class="card">'
+                        f'<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">'
+                        f'<span class="ai-badge {cls}"><span class="dot"></span>{label}</span>'
+                        f'{info(tip)}</div>'
+                        f'<div class="ai-summary-text">{brief["summary"]}</div>'
+                        f'</div>',
+                        unsafe_allow_html=True,
+                    )
+                    if brief.get("fallback_reason"):
+                        st.caption(f"ℹ️ {brief['fallback_reason']}")
+
+                    st.markdown(f"##### Next Steps {info('Concrete actions recommended for this member, in priority order.')}", unsafe_allow_html=True)
+                    steps_html = "".join(
+                        f'<div class="ai-step"><span class="n">{i}</span><span>{s}</span></div>'
+                        for i, s in enumerate(brief.get("next_steps", []), 1)
+                    )
+                    st.markdown(steps_html, unsafe_allow_html=True)
+
+                    if brief.get("talking_points"):
+                        st.markdown(f"##### Talking Points {info('Suggested phrasing for the outreach call — empathetic openers, not a script.')}", unsafe_allow_html=True)
+                        st.markdown(
+                            "".join(f'<div class="ai-quote">“{tp}”</div>' for tp in brief["talking_points"]),
+                            unsafe_allow_html=True,
+                        )
+
+                    if oversight_readonly:
+                        st.caption("👁 Oversight (read-only) — regeneration is disabled while viewing as a studio.")
+                    elif st.button("↻ Regenerate", key=f"regen_{hashed_id}", help="Discard the cached brief and synthesize a fresh one from current data."):
+                        with st.spinner("Regenerating brief with local Llama..."):
+                            st.session_state[brief_key] = ase.synthesize_summary(payload, force_refresh=True)
+                        st.rerun()
+
+        with tab_tech:
+            st.markdown('<div class="card">', unsafe_allow_html=True)
+            for exp in explanations:
+                st.write(exp)
+            st.markdown('</div>', unsafe_allow_html=True)
         
         # Interactive Plotly chart showing historical booking/app logins
         h_info("Historical Activity Trends (Last 90 Days)", "Rolling count of session attendance, app logins, and coach chats over the last 90 snapshot days.", "####")
