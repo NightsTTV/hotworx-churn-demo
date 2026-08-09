@@ -165,14 +165,17 @@ resource "aws_secretsmanager_secret" "app_secrets" {
   }
 }
 
+# NOTE: Do NOT commit real secrets here. Supply values via terraform.tfvars or a secrets
+# management pipeline (e.g. AWS SSM Parameter Store, Vault, or CI env vars).
+# The values below are placeholder strings for schema documentation only.
 resource "aws_secretsmanager_secret_version" "app_secrets_val" {
   secret_id     = aws_secretsmanager_secret.app_secrets.id
   secret_string = jsonencode({
-    HOTWORX_IDENTITY_ENCRYPTION_KEY = "kjBeSXQgvgrZA3O0OJPgJGndaq1PCo8uMWOfPzwy9fA=" # Replace in production
-    HOTWORX_IDENTITY_SALT           = "pepper_salt_2026"
+    HOTWORX_IDENTITY_ENCRYPTION_KEY = "REPLACE_WITH_FERNET_KEY"   # generate: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+    HOTWORX_IDENTITY_SALT           = "REPLACE_WITH_RANDOM_PEPPER"
     TWILIO_ACCOUNT_SID              = "PLACEHOLDER_TWILIO_SID"
     TWILIO_AUTH_TOKEN               = "PLACEHOLDER_TWILIO_TOKEN"
-    TWILIO_FROM_NUMBER              = "+15550001111"
+    TWILIO_FROM_NUMBER              = "PLACEHOLDER_TWILIO_FROM_NUMBER"
     HW_CAMPAIGN_API_KEY             = "PLACEHOLDER_HW_CAMPAIGN_KEY"
     HW_CAMPAIGN_API_URL             = "https://api.hwcampaign.com/v1/emails"
     PUSH_SERVER_KEY                 = "PLACEHOLDER_FCM_SERVER_KEY"
@@ -305,7 +308,11 @@ resource "aws_ecs_task_definition" "app" {
     }]
     environment = [
       { name = "HOTWORX_DATA_SOURCE", value = "production" },
-      { name = "HOTWORX_DB_CONN", value = "postgresql://${var.db_username}:${var.db_password}@${aws_db_instance.postgres.endpoint}/${aws_db_instance.postgres.db_name}" },
+      # DB connection string is assembled at runtime from individual Secrets Manager refs
+      # to avoid embedding the plaintext password in the task definition.
+      { name = "HOTWORX_DB_HOST",   value = aws_db_instance.postgres.address },
+      { name = "HOTWORX_DB_NAME",   value = aws_db_instance.postgres.db_name },
+      { name = "HOTWORX_DB_USER",   value = var.db_username },
       { name = "INTERVENTIONS_LIVE", value = "true" }
     ]
     secrets = [
